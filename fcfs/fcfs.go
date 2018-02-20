@@ -16,6 +16,10 @@ type result struct {
 	err   error
 }
 
+// Group runs some goroutines and returns a result from first finished goroutine.
+// If all goroutines return errors, Group returns also an error.
+// The error includes each goroutines' error as "github.com/hashicorp/go-multierror".Error.
+// Group can use zero value.
 type Group struct {
 	initOnce sync.Once
 	ch       chan result
@@ -32,6 +36,7 @@ func (g *Group) init(ctx context.Context) {
 	g.ctx, g.cancel = context.WithCancel(ctx)
 }
 
+// WithContext creates Group with given context.
 func WithContext(ctx context.Context) *Group {
 	var g Group
 	g.initOnce.Do(func() {
@@ -40,6 +45,8 @@ func WithContext(ctx context.Context) *Group {
 	return &g
 }
 
+// Go runs given funcion on a goroutine.
+// The result value and error of the funcion can get Wait and Result method.
 func (g *Group) Go(f func() (interface{}, error)) {
 	g.initOnce.Do(func() {
 		g.init(context.Background())
@@ -56,6 +63,7 @@ func (g *Group) Go(f func() (interface{}, error)) {
 	}()
 }
 
+// Delay runs funcion on a goroutine with given delay.
 func (g *Group) Delay(d time.Duration, f func() (interface{}, error)) {
 	g.Go(func() (interface{}, error) {
 		select {
@@ -67,12 +75,40 @@ func (g *Group) Delay(d time.Duration, f func() (interface{}, error)) {
 	})
 }
 
+// Wait waits that one goroutine returns value or all goroutines return error.
 func (g *Group) Wait() (v interface{}, err error) {
-	<-g.Run()
+	<-g.Done()
 	err = g.Result(&v)
 	return
 }
 
+// Done returns a channel which can wait that one goroutine returns value or all goroutines return error.
+// The result and error of goroutines can get from Result method.
+func (g *Group) Done() <-chan struct{} {
+	g.initOnce.Do(func() {
+		g.init(context.Background())
+	})
+
+	ch := make(chan struct{})
+
+	go func() {
+		defer func() {
+			g.cancel()
+			ch <- struct{}{}
+		}()
+		for g.waitOneGoroutine() {
+			// do nothing
+		}
+	}()
+
+	return ch
+}
+
+// Result sets the result of first finished goroutine to given argument.
+// If all goroutines return errors, Group returns also an error.
+// The error includes each goroutines' error as "github.com/hashicorp/go-multierror".Error.
+// v must be pointer type.
+// If the result cannot be set to v, Result returns error.
 func (g *Group) Result(v interface{}) error {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
@@ -103,26 +139,6 @@ func (g *Group) Result(v interface{}) error {
 	elm.Set(gv)
 
 	return g.result.err
-}
-
-func (g *Group) Run() <-chan struct{} {
-	g.initOnce.Do(func() {
-		g.init(context.Background())
-	})
-
-	ch := make(chan struct{})
-
-	go func() {
-		defer func() {
-			g.cancel()
-			ch <- struct{}{}
-		}()
-		for g.waitOneGoroutine() {
-			// do nothing
-		}
-	}()
-
-	return ch
 }
 
 func (g *Group) waitOneGoroutine() bool {
