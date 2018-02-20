@@ -37,12 +37,12 @@ func (g *Group) init(ctx context.Context) {
 }
 
 // WithContext creates Group with given context.
-func WithContext(ctx context.Context) *Group {
+func WithContext(ctx context.Context) (*Group, context.Context) {
 	var g Group
 	g.initOnce.Do(func() {
 		g.init(ctx)
 	})
-	return &g
+	return &g, g.ctx
 }
 
 // Go runs given funcion on a goroutine.
@@ -89,19 +89,14 @@ func (g *Group) Done() <-chan struct{} {
 		g.init(context.Background())
 	})
 
-	ch := make(chan struct{})
-
 	go func() {
-		defer func() {
-			g.cancel()
-			ch <- struct{}{}
-		}()
+		defer g.cancel()
 		for g.waitOneGoroutine() {
 			// do nothing
 		}
 	}()
 
-	return ch
+	return g.ctx.Done()
 }
 
 // Result sets the result of first finished goroutine to given argument.
