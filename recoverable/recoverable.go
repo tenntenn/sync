@@ -1,6 +1,10 @@
 package recoverable
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/pkg/errors"
+)
 
 type errRecovered struct {
 	value interface{}
@@ -21,7 +25,7 @@ func (err *errRecovered) RecoveredValue() interface{} {
 //          RecoveredValue() interface{}
 //     }
 func RecoveredValue(err error) (interface{}, bool) {
-	rerr, ok := err.(interface {
+	rerr, ok := errors.Cause(err).(interface {
 		RecoveredValue() interface{}
 	})
 
@@ -39,7 +43,7 @@ func Func(f func()) func() error {
 	return func() (err error) {
 		defer func() {
 			if r := recover(); r != nil {
-				err = &errRecovered{value: r}
+				err = errors.WithStack(&errRecovered{value: r})
 			}
 		}()
 		f()
