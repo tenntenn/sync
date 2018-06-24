@@ -10,10 +10,11 @@ import (
 func TestOnce(t *testing.T) {
 	expectedErr := errors.New("error")
 	cases := map[string]struct {
-		once Once
-		ok   bool
-		err  error
-		f    func(o *Once) (bool, error)
+		once  Once
+		ok    bool
+		err   error
+		panic interface{}
+		f     func(o *Once) (bool, error)
 	}{
 		"do once": {ok: true, f: func(o *Once) (ok bool, err error) {
 			o.Do(func() { ok = true })
@@ -53,10 +54,19 @@ func TestOnce(t *testing.T) {
 			o.Do(func() { ok = true })
 			return
 		}, err: expectedErr},
+		"try with panic": {panic: "panic", f: func(o *Once) (ok bool, err error) {
+			err = o.Try(func() error { panic("panic") })
+			return
+		}},
 	}
 
 	for n, tc := range cases {
 		t.Run(n, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != tc.panic {
+					t.Errorf("want %v got %v", tc.panic, r)
+				}
+			}()
 			ok, err := tc.f(&tc.once)
 			if ok != tc.ok {
 				t.Errorf("want %v got %v", tc.ok, ok)
