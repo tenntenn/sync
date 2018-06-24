@@ -1,6 +1,8 @@
 package try
 
-import "sync"
+import (
+	"sync"
+)
 
 // Once is a type which added Try method to sync.Once.
 type Once struct {
